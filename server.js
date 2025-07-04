@@ -49,28 +49,50 @@ MongoClient.connect(mongoURL)
       }
     });
 
-    app.post("/check-email", async (req, res) => {
-      const { email } = req.body;
-      const users = db.collection("Mailusers");
-      const user = await users.findOne({ username: email });
-      user
-        ? res.json({ found: true, message: "✅ Valid recipient" })
-        : res.status(404).json({ found: false, message: "❌ No such user" });
+   app.post("/check-email", async (req, res) => {
+  const { email } = req.body;
+  const users = db.collection("Mailusers");
+
+  try {
+    const user = await users.findOne({
+      username: { $regex: `^${email}$`, $options: "i" } // case-insensitive exact match
     });
 
-    app.post("/send-mail", async (req, res) => {
-      const { from, to, subject, body } = req.body;
-      const users = db.collection("Mailusers");
-      const recipient = await users.findOne({ username: to });
+    if (user) {
+      res.json({ found: true, message: "✅ Valid recipient" });
+    } else {
+      res.status(404).json({ found: false, message: "❌ No such user" });
+    }
+  } catch (err) {
+    res.status(500).json({ message: "❌ Server error", error: err.message });
+  }
+});
 
-      if (!recipient) {
-        return res.status(404).json({ message: "❌ Recipient not found" });
-      }
 
-      const messages = db.collection("Messages");
-      const result = await messages.insertOne({ from, to, subject, body, seen: false, timestamp: new Date() });
-      res.json({ message: "✅ Mail sent", id: result.insertedId });
+   app.post("/send-mail", async (req, res) => {
+  const { from, to, subject, body } = req.body;
+  const users = db.collection("Mailusers");
+
+  try {
+    const recipient = await users.findOne({
+      username: { $regex: `^${to}$`, $options: "i" }
     });
+
+    if (!recipient) {
+      return res.status(404).json({ message: "❌ Recipient not found" });
+    }
+
+    const messages = db.collection("Messages");
+    const result = await messages.insertOne({
+      from, to, subject, body, seen: false, timestamp: new Date()
+    });
+
+    res.json({ message: "✅ Mail sent", id: result.insertedId });
+  } catch (err) {
+    res.status(500).json({ message: "❌ Failed to send mail", error: err.message });
+  }
+});
+
 
     app.post("/mark-seen", async (req, res) => {
       const { messageId } = req.body;
@@ -99,14 +121,25 @@ MongoClient.connect(mongoURL)
     });
 
     app.post("/login", async (req, res) => {
-      const { username, password12 } = req.body;
-      const users = db.collection("Mailusers");
-      const user = await users.findOne({ username, password12 });
+  const { username, password12 } = req.body;
+  const users = db.collection("Mailusers");
 
-      user
-        ? res.json({ message: "✅ Login successful" })
-        : res.status(401).json({ message: "❌ Invalid credentials" });
+  try {
+    const user = await users.findOne({
+      username: { $regex: `^${username}$`, $options: "i" }, // case-insensitive
+      password12
     });
+
+    if (user) {
+      res.json({ message: "✅ Login successful" });
+    } else {
+      res.status(401).json({ message: "❌ Invalid credentials" });
+    }
+  } catch (err) {
+    res.status(500).json({ message: "❌ Server error", error: err.message });
+  }
+});
+
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running at http://localhost:${PORT}`);
